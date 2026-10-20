@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#05060c">
+<title>Milky Way Explorer — Interactive 3D Galaxy</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #05060c;
+    --panel: rgba(10, 13, 27, .72);
+    --line: rgba(156, 183, 255, .18);
+    --text: #eef2ff;
+    --muted: #9aa8c9;
+    --cyan: #7ce7ff;
+    --violet: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  html, body { width:100%; height:100%; margin:0; overflow:hidden; background:var(--bg); color:var(--text); font-family:Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+  body { letter-spacing:.01em; }
+  #scene { position:fixed; inset:0; width:100%; height:100%; display:block; outline:none; }
+  .vignette { pointer-events:none; position:fixed; inset:0; z-index:1; background:radial-gradient(ellipse at center, transparent 30%, rgba(2,3,9,.32) 70%, rgba(2,3,9,.88) 120%); }
+  .grain { pointer-events:none; position:fixed; inset:0; z-index:2; opacity:.10; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E"); mix-blend-mode:screen; }
+  .topbar { position:fixed; z-index:5; top:22px; left:26px; right:26px; display:flex; align-items:center; justify-content:space-between; gap:16px; pointer-events:none; }
+  .brand, .top-actions { pointer-events:auto; }
+  .brand { display:flex; align-items:center; gap:12px; }
+  .logo { width:37px; height:37px; border:1px solid rgba(124,231,255,.45); border-radius:50%; display:grid; place-items:center; box-shadow:0 0 24px rgba(124,231,255,.14), inset 0 0 15px rgba(124,231,255,.10); }
+  .logo svg { width:22px; height:22px; }
+  .brand-title { font-size:12px; font-weight:750; letter-spacing:.2em; text-transform:uppercase; }
+  .brand-sub { color:var(--muted); font-size:10px; letter-spacing:.15em; text-transform:uppercase; margin-top:4px; }
+  .top-actions { display:flex; gap:9px; }
+  button, input, select { font:inherit; }
+  button { cursor:pointer; color:var(--text); background:rgba(13,18,37,.72); border:1px solid var(--line); border-radius:9px; padding:10px 13px; transition:border-color .2s, background .2s, transform .2s; }
+  button:hover { border-color:rgba(124,231,255,.55); background:rgba(22,33,62,.88); }
+  button:active { transform:scale(.98); }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--cyan); outline-offset:3px; }
+  .icon-btn { display:flex; align-items:center; gap:8px; font-size:11px; letter-spacing:.06em; }
+  .status { display:flex; align-items:center; gap:8px; color:#b8c5e3; font-size:10px; letter-spacing:.13em; text-transform:uppercase; }
+  .status-dot { width:6px; height:6px; border-radius:50%; background:#68f0c1; box-shadow:0 0 12px #68f0c1; }
+  .left-panel { position:fixed; z-index:4; left:26px; top:112px; width:280px; max-height:calc(100vh - 150px); overflow:auto; padding:21px; border:1px solid var(--line); border-radius:16px; background:linear-gradient(145deg, rgba(12,17,36,.86), rgba(5,8,20,.67)); backdrop-filter:blur(18px); box-shadow:0 18px 70px rgba(0,0,0,.28); scrollbar-width:thin; scrollbar-color:#273454 transparent; }
+  .eyebrow { color:var(--cyan); font-size:9px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; }
+  h1 { margin:10px 0 8px; font-size:26px; line-height:1.08; font-weight:650; letter-spacing:-.045em; }
+  h1 span { color:#a6b7ff; }
+  .intro { color:var(--muted); font-size:11px; line-height:1.65; margin:0 0 19px; }
+  .section { border-top:1px solid rgba(156,183,255,.13); padding-top:15px; margin-top:15px; }
+  .section-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; color:#dce4ff; font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+  .small-note { color:#7382a8; font-size:9px; font-weight:500; letter-spacing:.02em; text-transform:none; }
+  .control-row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:11px 0; color:#aebbd9; font-size:11px; }
+  .control-row output { color:#e8eeff; font-variant-numeric:tabular-nums; font-size:10px; }
+  input[type="range"] { width:100%; accent-color:#8bdfff; cursor:pointer; }
+  .range-wrap { width:100%; }
+  .toggle { position:relative; width:31px; height:17px; border-radius:99px; background:#27304a; border:1px solid #465273; padding:0; flex:none; }
+  .toggle::after { content:""; position:absolute; top:2px; left:2px; width:11px; height:11px; border-radius:50%; background:#9aa8c9; transition:transform .2s, background .2s; }
+  .toggle.active { background:#1c6574; border-color:#48b9cf; }
+  .toggle.active::after { transform:translateX(13px); background:#a8f4ff; }
+  .quick-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+  .quick { text-align:left; padding:10px 9px; font-size:10px; line-height:1.4; }
+  .quick strong { display:block; font-size:10px; color:#e6edff; font-weight:650; }
+  .quick span { display:block; margin-top:3px; color:#8593b6; font-size:9px; }
+  .quick.active { border-color:rgba(124,231,255,.58); background:rgba(36,88,111,.25); }
+  .search { display:flex; gap:6px; }
+  .search input { min-width:0; width:100%; padding:10px; color:var(--text); background:rgba(4,7,18,.7); border:1px solid var(--line); border-radius:8px; font-size:10px; outline:none; }
+  .search button { padding:0 12px; font-size:10px; }
+  .bottom-hud { position:fixed; z-index:4; left:50%; bottom:22px; transform:translateX(-50%); display:flex; align-items:center; gap:18px; padding:11px 16px; border:1px solid var(--line); border-radius:12px; background:rgba(8,12,27,.74); backdrop-filter:blur(15px); white-space:nowrap; box-shadow:0 12px 50px rgba(0,0,0,.25); }
+  .hud-item { display:flex; flex-direction:column; gap:4px; }
+  .hud-label { color:#7786aa; font-size:8px; letter-spacing:.14em; text-transform:uppercase; }
+  .hud-value { color:#e6edff; font-size:11px; font-variant-numeric:tabular-nums; }
+  .hud-sep { height:26px; width:1px; background:rgba(156,183,255,.17); }
+  .hint { position:fixed; z-index:4; right:27px; bottom:29px; color:#8492b2; font-size:9px; letter-spacing:.06em; text-align:right; line-height:1.8; }
+  .hint b { color:#d5def8; font-weight:550; }
+  .target-label { position:fixed; z-index:4; right:26px; top:100px; width:200px; text-align:right; pointer-events:none; }
+  .target-label .eyebrow { font-size:8px; }
+  .target-label h2 { font-size:16px; font-weight:550; margin:6px 0; letter-spacing:-.02em; }
+  .target-label p { font-size:10px; line-height:1.55; color:#a3b0cf; margin:0; }
+  .loading { position:fixed; z-index:10; inset:0; display:grid; place-items:center; background:#05060c; transition:opacity .8s ease, visibility .8s; }
+  .loading.done { opacity:0; visibility:hidden; }
+  .loading-inner { text-align:center; width:min(320px,80vw); }
+  .loader-orbit { width:66px; height:66px; margin:0 auto 25px; border:1px solid rgba(124,231,255,.15); border-top-color:#8beaff; border-right-color:#a78bfa; border-radius:50%; animation:spin 1.6s linear infinite; box-shadow:0 0 35px rgba(124,231,255,.08); }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .loading-title { font-size:11px; letter-spacing:.23em; text-transform:uppercase; }
+  .loading-sub { margin-top:9px; font-size:10px; color:#7e8bad; }
+  .progress { height:2px; margin-top:19px; background:#1b2239; overflow:hidden; }
+  .progress > div { height:100%; width:0; background:linear-gradient(90deg,#7ce7ff,#a78bfa); transition:width .25s; }
+  .toast { position:fixed; z-index:8; left:50%; top:84px; transform:translate(-50%,-8px); opacity:0; pointer-events:none; padding:10px 14px; border:1px solid var(--line); border-radius:9px; color:#eaf0ff; background:rgba(9,15,32,.92); font-size:11px; transition:opacity .2s, transform .2s; }
+  .toast.show { opacity:1; transform:translate(-50%,0); }
+  .mobile-note { display:none; }
+  @media (max-width: 760px) {
+    .topbar { top:13px; left:13px; right:13px; }
+    .brand-title { font-size:10px; }
+    .brand-sub { font-size:8px; }
+    .top-actions .status { display:none; }
+    .top-actions button { padding:9px; font-size:10px; }
+    .left-panel { left:12px; top:auto; bottom:80px; width:min(255px, calc(100vw - 24px)); max-height:44vh; padding:14px; }
+    h1 { font-size:21px; }
+    .intro { margin-bottom:10px; }
+    .section { padding-top:10px; margin-top:10px; }
+    .target-label { top:76px; right:13px; width:135px; }
+    .target-label h2 { font-size:13px; }
+    .target-label p { font-size:9px; }
+    .bottom-hud { bottom:12px; left:auto; right:12px; transform:none; gap:10px; padding:9px 11px; }
+    .hud-label { font-size:7px; }
+    .hud-value { font-size:9px; }
+    .hud-sep { height:22px; }
+    .hint { display:none; }
+    .mobile-note { display:block; font-size:9px; color:#7e8bad; margin-top:10px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="scene" aria-label="Interactive 3D galaxy scene"></canvas>
+<div class="vignette"></div><div class="grain"></div>
+
+<div class="loading" id="loading">
+  <div class="loading-inner">
+    <div class="loader-orbit"></div>
+    <div class="loading-title">Initializing the cosmos</div>
+    <div class="loading-sub" id="loadingSub">Mapping stellar particles…</div>
+    <div class="progress"><div id="progressBar"></div></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M3 13.5C5 6.5 14 3.5 20.5 7.5C17.5 5.5 12 7 9 11s-2 7 2 8c-4.5.5-9-1.5-8-5.5Z" stroke="#8beaff" stroke-width="1.1"/><circle cx="12" cy="12" r="2" fill="#d8f9ff"/><path d="M6 18c4 2 10 0 13-5" stroke="#a78bfa" stroke-width=".8"/></svg>
+    </div>
+    <div><div class="brand-title">Cosmos / Explorer</div><div class="brand-sub">Milky Way interactive atlas</div></div>
+  </div>
+  <div class="top-actions">
+    <div class="status"><span class="status-dot"></span> Simulation online</div>
+    <button class="icon-btn" id="rotationBtn" title="Toggle galaxy rotation">Ⅱ <span>Pause</span></button>
+    <button class="icon-btn" id="resetBtn" title="Reset camera">↺ <span>Reset view</span></button>
+  </div>
+</header>
+
+<aside class="left-panel">
+  <div class="eyebrow">Deep-space navigation</div>
+  <h1>Explore the<br><span>Milky Way.</span></h1>
+  <p class="intro">A real-time, interactive 3D-inspired galaxy model. Orbit the scene, travel through star fields and inspect points of interest.</p>
+
+  <div class="section">
+    <div class="section-head">Navigate <span class="small-note">Camera</span></div>
+    <div class="control-row"><label for="zoom">Zoom distance</label><output id="zoomValue">72%</output></div>
+    <div class="range-wrap"><input id="zoom" type="range" min="8" max="100" value="72" aria-label="Zoom distance"></div>
+    <div class="control-row"><label for="speed">Rotation speed</label><output id="speedValue">0.35×</output></div>
+    <input id="speed" type="range" min="0" max="100" value="35" aria-label="Rotation speed">
+    <div class="control-row"><label for="quality">Particle density</label><output id="qualityValue">High</output></div>
+    <input id="quality" type="range" min="1" max="3" value="2" aria-label="Particle density">
+  </div>
+
+  <div class="section">
+    <div class="section-head">Quick destinations</div>
+    <div class="quick-grid">
+      <button class="quick active" data-target="galaxy"><strong>Galaxy overview</strong><span>Full spiral structure</span></button>
+      <button class="quick" data-target="core"><strong>Galactic core</strong><span>Central bulge</span></button>
+      <button class="quick" data-target="orion"><strong>Orion Arm</strong><span>Our local region</span></button>
+      <button class="quick" data-target="outer"><strong>Outer halo</strong><span>Far star field</span></button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">Find a destination</div>
+    <div class="search"><input id="searchInput" type="text" placeholder="Try: Sun, core, Orion…" aria-label="Search galaxy destination"><button id="searchBtn">Go</button></div>
+    <p class="mobile-note">Tip: use two fingers to zoom and drag to orbit.</p>
+  </div>
+</aside>
+
+<div class="target-label">
+  <div class="eyebrow" id="targetEyebrow">Current coordinates / 00</div>
+  <h2 id="targetTitle">The Milky Way</h2>
+  <p id="targetDesc">A barred spiral galaxy, home to our Solar System.</p>
+</div>
+
+<div class="bottom-hud">
+  <div class="hud-item"><span class="hud-label">Visible stars</span><span class="hud-value" id="starCount">180,000</span></div>
+  <div class="hud-sep"></div>
+  <div class="hud-item"><span class="hud-label">Camera range</span><span class="hud-value" id="rangeValue">72.0 kly</span></div>
+  <div class="hud-sep"></div>
+  <div class="hud-item"><span class="hud-label">Frame rate</span><span class="hud-value" id="fpsValue">60 FPS</span></div>
+</div>
+<div class="hint"><b>DRAG</b> orbit · <b>SCROLL</b> zoom<br><b>RIGHT-DRAG</b> pan · <b>CLICK</b> markers</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const canvas = document.querySelector('#scene');
+const loading = document.querySelector('#loading');
+const loadingSub = document.querySelector('#loadingSub');
+const progressBar = document.querySelector('#progressBar');
+const toastEl = document.querySelector('#toast');
+
+let renderer, scene, camera, controls, galaxyGroup, starPoints, backgroundStars, dustPoints, coreGlow, planetGroup;
+let rotating = true, rotationSpeed = 0.0035, quality = 2, targetRange = 72, lastTime = 0, frames = 0, fpsStamp = 0;
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const destinations = {};
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (reducedMotion) rotating = false;
+
+function toast(message) {
+  toastEl.textContent = message;
+  toastEl.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => toastEl.classList.remove('show'), 2300);
+}
+function setProgress(p, message) {
+  progressBar.style.width = `${p}%`;
+  loadingSub.textContent = message;
+}
+function randomSeed(seed) {
+  let x = seed >>> 0;
+  return () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
+}
+function makeGlowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(64,64,0,64,64,64);
+  g.addColorStop(0,'rgba(255,248,232,1)');
+  g.addColorStop(.12,'rgba(255,226,190,.72)');
+  g.addColorStop(.32,'rgba(161,174,255,.25)');
+  g.addColorStop(.65,'rgba(107,117,255,.07)');
+  g.addColorStop(1,'rgba(80,90,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0,0,128,128);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; return tex;
+}
+function makeNebulaTexture(colorA, colorB) {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  const rand = randomSeed(colorA.charCodeAt(1) * 1000 + colorB.charCodeAt(2) * 77);
+  for (let i=0;i<18;i++) {
+    const x=rand()*256, y=rand()*256, r=25+rand()*100;
+    const g=ctx.createRadialGradient(x,y,0,x,y,r);
+    g.addColorStop(0,colorA); g.addColorStop(.55,colorB); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.fillRect(x-r,y-r,r*2,r*2);
+  }
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; return tex;
+}
+function addSprite(parent, texture, position, scale, opacity=1, tint=0xffffff) {
+  const material = new THREE.SpriteMaterial({ map:texture, color:tint, transparent:true, opacity, depthWrite:false, blending:THREE.AdditiveBlending });
+  const sprite = new THREE.Sprite(material);
+  sprite.position.copy(position); sprite.scale.set(scale,scale,1); parent.add(sprite); return sprite;
+}
+function addPointCloud(parent, positions, colors, sizes, name) {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors,3));
+  if (sizes) geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes,1));
+  const material = new THREE.PointsMaterial({
+    size: name === 'galaxy' ? .10 : .075, sizeAttenuation:true, vertexColors:true,
+    transparent:true, opacity: name === 'galaxy' ? .94 : .85, depthWrite:false,
+    blending:THREE.AdditiveBlending
+  });
+  const points = new THREE.Points(geometry,material); points.name=name; parent.add(points); return points;
+}
+function buildGalaxy(multiplier=1) {
+  if (galaxyGroup) {
+    scene.remove(galaxyGroup);
+    galaxyGroup.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material) { if(Array.isArray(o.material)) o.material.forEach(m=>m.dispose()); else o.material.dispose(); } });
+  }
+  galaxyGroup = new THREE.Group(); galaxyGroup.rotation.x = 0.12; scene.add(galaxyGroup);
+  planetGroup = new THREE.Group(); galaxyGroup.add(planetGroup);
+  const rand = randomSeed(782913);
+  const count = Math.floor(90000 * multiplier);
+  const arms = 4, maxR = 27;
+  const pos=[], col=[];
+  const cInner = new THREE.Color('#fff0d7'), cGold = new THREE.Color('#ffcfb0'), cPink = new THREE.Color('#d1a7ff'), cBlue = new THREE.Color('#8caeff'), cOuter = new THREE.Color('#75d8ff');
+  for(let i=0;i<count;i++){
+    const r = Math.pow(rand(), .62) * maxR;
+    const arm = Math.floor(rand()*arms);
+    const spin = r * .37;
+    const angle = arm * Math.PI*2/arms + spin + (rand()-.5)*(.12 + r*.035);
+    const spread = .18 + r*.055;
+    const x = Math.cos(angle)*r + (rand()-.5)*spread;
+    const z = Math.sin(angle)*r + (rand()-.5)*spread;
+    const y = (rand()-.5) * (.12 + (1-r/maxR)*1.35) + Math.sin(angle*2+r*.15)*.06;
+    pos.push(x,y,z);
+    const t = r/maxR, q=rand();
+    let color = cBlue.clone().lerp(cPink, Math.max(0, .65-t)*.8);
+    if(t<.24) color = cInner.clone().lerp(cGold,rand()*.55);
+    else if(q>.82) color = cOuter.clone().lerp(cBlue,rand()*.5);
+    else color.lerp(new THREE.Color('#f4e8ff'),rand()*.35);
+    const brightness = .55 + rand()*.75;
+    col.push(color.r*brightness,color.g*brightness,color.b*brightness);
+  }
+  starPoints = addPointCloud(galaxyGroup,pos,col,null,'galaxy');
+  starPoints.userData.isGalaxy = true;
+
+  // Dense, glowing central bulge.
+  const corePos=[], coreCol=[];
+  const coreCount=Math.floor(15000*multiplier);
+  for(let i=0;i<coreCount;i++){
+    const rr=Math.pow(rand(),2.4)*5.5, a=rand()*Math.PI*2;
+    corePos.push(Math.cos(a)*rr,(rand()-.5)*(1.8-rr*.2),Math.sin(a)*rr);
+    const c=new THREE.Color().setHSL(.09+rand()*.08,.48,.64+rand()*.32);
+    coreCol.push(c.r,c.g,c.b);
+  }
+  addPointCloud(galaxyGroup,corePos,coreCol,null,'core-stars');
+
+  // Diffuse dust lanes and nebulae, intentionally stylized rather than a scientific survey.
+  const dustPos=[], dustCol=[];
+  const dustCount=Math.floor(21000*multiplier);
+  for(let i=0;i<dustCount;i++){
+    const r=3+rand()*23, arm=Math.floor(rand()*arms), a=arm*Math.PI/2+r*.37+(rand()-.5)*.18;
+    dustPos.push(Math.cos(a)*r,(rand()-.5)*(.08+r*.018),Math.sin(a)*r);
+    const c=new THREE.Color(rand()>.5?'#8e8cff':'#5ad8e8').multiplyScalar(.12+rand()*.22);
+    dustCol.push(c.r,c.g,c.b);
+  }
+  dustPoints=addPointCloud(galaxyGroup,dustPos,dustCol,null,'dust-lanes');
+  dustPoints.material.size=.18; dustPoints.material.opacity=.23;
+
+  const glow=makeGlowTexture();
+  coreGlow=addSprite(galaxyGroup,glow,new THREE.Vector3(0,0,0),13,.95,0xffd9b1);
+  addSprite(galaxyGroup,glow,new THREE.Vector3(0,.05,0),6,.9,0xffe7d3);
+
+  const nebulae=[
+    {p:[-9,.05,7],s:5,a:'rgba(96,72,255,.28)',b:'rgba(40,80,190,.04)'},
+    {p:[12,-.05,-6],s:4.4,a:'rgba(255,76,174,.22)',b:'rgba(78,45,180,.03)'},
+    {p:[5,.08,13],s:3.7,a:'rgba(54,202,255,.22)',b:'rgba(50,70,180,.02)'},
+    {p:[-17,.03,-3],s:4.8,a:'rgba(126,81,255,.22)',b:'rgba(35,70,160,.02)'},
+    {p:[16,.1,8],s:3.2,a:'rgba(255,137,191,.18)',b:'rgba(60,70,180,.02)'}
+  ];
+  nebulae.forEach(n=>{
+    const tex=makeNebulaTexture(n.a,n.b);
+    const spr=addSprite(galaxyGroup,tex,new THREE.Vector3(...n.p),n.s,.9);
+    spr.material.rotation=rand()*Math.PI;
+  });
+
+  // A local-region marker and a few illustrative stellar objects.
+  const markerGeo=new THREE.SphereGeometry(.16,16,16);
+  const markerMat=new THREE.MeshBasicMaterial({color:0x8beaff});
+  const sunMarker=new THREE.Mesh(markerGeo,markerMat);
+  const sunPos=new THREE.Vector3(8.6,.12,1.5); sunMarker.position.copy(sunPos); sunMarker.name='sun-marker'; planetGroup.add(sunMarker);
+  addSprite(planetGroup,glow,sunPos,1.5,.95,0x7ce7ff);
+  destinations.sun={position:sunPos.clone(),title:'Solar neighbourhood',eyebrow:'LOCAL ARM / 08.6 KLY',desc:'Our Solar System is located in the Orion Spur, between the major spiral arms.'};
+  destinations.orion={position:new THREE.Vector3(9,0,2),title:'Orion Spur',eyebrow:'LOCAL ARM / SOLAR REGION',desc:'A minor spiral feature between the Sagittarius and Perseus arms.'};
+  destinations.core={position:new THREE.Vector3(0,0,0),title:'Galactic centre',eyebrow:'GALACTIC CORE / 00',desc:'The central bulge contains a dense population of stars and the radio source Sagittarius A*.'};
+  destinations.galaxy={position:new THREE.Vector3(0,0,0),title:'The Milky Way',eyebrow:'GALAXY OVERVIEW / 01',desc:'A barred spiral galaxy represented here by a stylized, navigable 3D particle model.'};
+  destinations.outer={position:new THREE.Vector3(24,1,9),title:'Outer stellar disc',eyebrow:'OUTER DISC / 24 KLY',desc:'The outer disc becomes more diffuse, with stars spread across the galaxy’s extended structure.'};
+  destinations.sunMarker=destinations.sun;
+  return count;
+}
+function buildBackground() {
+  const rand=randomSeed(10982), count=17000, pos=[], col=[];
+  const colors=['#ffffff','#a9c8ff','#ffd7c0','#a5eaff'];
+  for(let i=0;i<count;i++){
+    const radius=110+rand()*180, theta=rand()*Math.PI*2, phi=Math.acos(2*rand()-1);
+    pos.push(radius*Math.sin(phi)*Math.cos(theta),radius*Math.cos(phi),radius*Math.sin(phi)*Math.sin(theta));
+    const c=new THREE.Color(colors[Math.floor(rand()*colors.length)]).multiplyScalar(.38+rand()*.62);
+    col.push(c.r,c.g,c.b);
+  }
+  backgroundStars=addPointCloud(scene,pos,col,null,'background-stars');
+  backgroundStars.material.size=.42; backgroundStars.material.opacity=.85;
+}
+function init() {
+  try {
+    renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false, powerPreference:'high-performance'});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth,window.innerHeight);
+    renderer.outputColorSpace=THREE.SRGBColorSpace;
+    renderer.toneMapping=THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure=1.22;
+    scene=new THREE.Scene(); scene.background=new THREE.Color('#05060c');
+    camera=new THREE.PerspectiveCamera(48,window.innerWidth/window.innerHeight,.1,1000);
+    camera.position.set(30,24,45);
+    controls=new OrbitControls(camera,renderer.domElement);
+    controls.enableDamping=true; controls.dampingFactor=.055;
+    controls.minDistance=4; controls.maxDistance=130;
+    controls.target.set(0,0,0); controls.rotateSpeed=.55; controls.zoomSpeed=.8; controls.panSpeed=.65;
+    controls.maxPolarAngle=Math.PI*.93; controls.minPolarAngle=.08;
+    scene.add(new THREE.AmbientLight(0x8294ff,.28));
+    const keyLight=new THREE.PointLight(0x91aaff,2,100); keyLight.position.set(0,8,0); scene.add(keyLight);
+    buildBackground();
+    setProgress(20,'Creating the stellar field…');
+    requestAnimationFrame(()=>{
+      const n=buildGalaxy(quality===1?.55:quality===2?1:1.35);
+      document.querySelector('#starCount').textContent=n.toLocaleString('en-US');
+      setProgress(85,'Calibrating the camera…');
+      setTimeout(()=>{
+        loading.classList.add('done');
+        animate();
+        toast('Explorer ready — drag to orbit, scroll to zoom.');
+      },350);
+    });
+    window.addEventListener('resize',onResize);
+    renderer.domElement.addEventListener('pointerdown',onPointerDown);
+  } catch (err) {
+    console.error(err);
+    loadingSub.textContent='WebGL could not start. Try a modern browser with hardware acceleration enabled.';
+    progressBar.style.background='#ff8c9a';
+  }
+}
+function onResize(){
+  if(!renderer||!camera)return;
+  camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth,window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+}
+function animate(now=0){
+  requestAnimationFrame(animate);
+  const delta=Math.min((now-lastTime)/1000||0, .05); lastTime=now;
+  if(rotating && galaxyGroup) galaxyGroup.rotation.y += rotationSpeed*delta*60;
+  if(coreGlow) coreGlow.material.opacity=.83+Math.sin(now*.0007)*.12;
+  controls.update();
+  renderer.render(scene,camera);
+  frames++;
+  if(now-fpsStamp>1000){
+    document.querySelector('#fpsValue').textContent=`${Math.round(frames*1000/(now-fpsStamp||1000))} FPS`;
+    frames=0; fpsStamp=now;
+    const d=camera.position.distanceTo(controls.target);
+    document.querySelector('#rangeValue').textContent=`${(d*1.0).toFixed(1)} kly`;
+    document.querySelector('#zoomValue').textContent=`${Math.round(100-(d-4)/126*100)}%`;
+    document.querySelector('#zoom').value=Math.max(8,Math.min(100,Math.round(100-(d-4)/126*100)));
+  }
+}
+function goTo(name){
+  const dest=destinations[name];
+  if(!dest){toast('No matching destination. Try “Sun”, “core”, “Orion” or “outer”.');return;}
+  document.querySelectorAll('.quick').forEach(b=>b.classList.toggle('active',b.dataset.target===name));
+  document.querySelector('#targetTitle').textContent=dest.title;
+  document.querySelector('#targetEyebrow').textContent=dest.eyebrow;
+  document.querySelector('#targetDesc').textContent=dest.desc;
+  const p=dest.position;
+  let distance= name==='galaxy'?55:name==='core'?13:name==='orion'||name==='sun'||name==='sunMarker'?7:name==='outer'?12:12;
+  const direction=new THREE.Vector3(1,.65,1).normalize();
+  const newPos=p.clone().add(direction.multiplyScalar(distance));
+  const startPos=camera.position.clone(), startTarget=controls.target.clone(), start=performance.now(), duration=1400;
+  controls.enabled=false;
+  function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+  function move(now){
+    const t=Math.min(1,(now-start)/duration), e=ease(t);
+    camera.position.lerpVectors(startPos,newPos,e);
+    controls.target.lerpVectors(startTarget,p,e);
+    camera.lookAt(controls.target);
+    if(t<1)requestAnimationFrame(move);else{controls.enabled=true;controls.update();}
+  }
+  requestAnimationFrame(move);
+}
+function onPointerDown(e){
+  if(e.button!==0)return;
+  pointer.x=(e.clientX/window.innerWidth)*2-1;
+  pointer.y=-(e.clientY/window.innerHeight)*2+1;
+  raycaster.setFromCamera(pointer,camera);
+  const hits=raycaster.intersectObjects(planetGroup?planetGroup.children:[],true);
+  if(hits.length){
+    goTo('sun');
+    toast('Solar neighbourhood selected');
+  }
+}
+document.querySelector('#rotationBtn').addEventListener('click',()=>{
+  rotating=!rotating;
+  document.querySelector('#rotationBtn').innerHTML=rotating?'Ⅱ <span>Pause</span>':'▶ <span>Resume</span>';
+  toast(rotating?'Galaxy rotation resumed':'Galaxy rotation paused');
+});
+document.querySelector('#resetBtn').addEventListener('click',()=>{
+  camera.position.set(30,24,45); controls.target.set(0,0,0); controls.enabled=true; controls.update();
+  document.querySelector('#targetTitle').textContent='The Milky Way';
+  document.querySelector('#targetEyebrow').textContent='GALAXY OVERVIEW / 01';
+  document.querySelector('#targetDesc').textContent='A barred spiral galaxy, home to our Solar System.';
+  document.querySelectorAll('.quick').forEach(b=>b.classList.toggle('active',b.dataset.target==='galaxy'));
+  toast('Camera reset to galaxy overview');
+});
+document.querySelectorAll('.quick').forEach(b=>b.addEventListener('click',()=>goTo(b.dataset.target)));
+document.querySelector('#zoom').addEventListener('input',e=>{
+  const pct=Number(e.target.value), distance=130-(pct/100)*126;
+  const dir=camera.position.clone().sub(controls.target).normalize();
+  camera.position.copy(controls.target).add(dir.multiplyScalar(Math.max(4,distance)));
+  controls.update();
+});
+document.querySelector('#speed').addEventListener('input',e=>{
+  rotationSpeed=Number(e.target.value)/1000;
+  document.querySelector('#speedValue').textContent=`${(Number(e.target.value)/100).toFixed(2)}×`;
+});
+document.querySelector('#quality').addEventListener('change',e=>{
+  quality=Number(e.target.value);
+  if(!galaxyGroup)return;
+  const n=buildGalaxy(quality===1?.55:quality===2?1:1.35);
+  document.querySelector('#starCount').textContent=n.toLocaleString('en-US');
+  toast(`Particle density set to ${['','Balanced','High','Ultra'][quality]}`);
+});
+function searchDestination(){
+  const q=document.querySelector('#searchInput').value.trim().toLowerCase();
+  if(!q){toast('Enter a destination to search.');return;}
+  if(q.includes('sun')||q.includes('solar'))goTo('sun');
+  else if(q.includes('core')||q.includes('center')||q.includes('centre')||q.includes('sagittarius'))goTo('core');
+  else if(q.includes('orion')||q.includes('local'))goTo('orion');
+  else if(q.includes('outer')||q.includes('halo')||q.includes('disc')||q.includes('disk'))goTo('outer');
+  else if(q.includes('milky')||q.includes('galaxy')||q.includes('overview'))goTo('galaxy');
+  else toast('No result in this demo model. Try Sun, Solar System, Orion, Core or Outer Disc.');
+}
+document.querySelector('#searchBtn').addEventListener('click',searchDestination);
+document.querySelector('#searchInput').addEventListener('keydown',e=>{if(e.key==='Enter')searchDestination();});
+document.querySelector('#quality').value=String(quality);
+setProgress(8,'Loading the rendering engine…');
+init();
+</script>
+</body>
+</html>
